@@ -63,14 +63,10 @@ body{font-family:'Noto Sans SC',sans-serif;background:var(--bg);color:var(--text
 .multi-card-tag{font-size:12px;color:var(--muted);margin-bottom:0.8rem;}
 .multi-card-verdict{font-size:13px;line-height:1.85;color:rgba(240,236,228,0.8);}
 .section-label{font-size:10px;letter-spacing:3px;color:var(--muted);text-transform:uppercase;margin-bottom:1rem;}
-.dims-card{background:var(--bg2);border:1px solid var(--border);padding:1.5rem;margin-bottom:1.5rem;}
-.dim-row{display:flex;align-items:center;gap:10px;margin-bottom:14px;}
-.dim-row:last-child{margin-bottom:0;}
-.dim-name{font-size:11px;color:var(--muted);width:56px;min-width:56px;text-align:right;}
-.dim-inner{flex:1;}
-.dim-track{height:3px;background:rgba(255,255,255,0.06);margin-bottom:3px;position:relative;}
-.dim-fill{position:absolute;top:0;left:0;height:3px;background:var(--accent);transition:width 0.8s ease;}
-.dim-poles{display:flex;justify-content:space-between;font-size:9px;color:rgba(136,136,136,0.5);}
+.dims-card{background:var(--bg2);border:1px solid var(--border);padding:1.5rem;margin-bottom:1.5rem;display:flex;flex-direction:column;align-items:center;}
+.radar-wrap{width:100%;max-width:320px;margin:0 auto;}
+.radar-wrap svg{width:100%;height:auto;display:block;}
+.radar-labels{position:relative;}
 .destiny-card{background:var(--bg2);border:1px solid var(--border);padding:1.5rem;margin-bottom:1.5rem;cursor:pointer;}
 .destiny-card-header{display:flex;justify-content:space-between;align-items:center;}
 .destiny-main{font-size:16px;font-weight:700;color:var(--accent);letter-spacing:1px;}
@@ -413,14 +409,13 @@ function showResult(winners,userLevels){
     main.innerHTML=`<div class="multi-badge">你是多面体女团</div><p style="font-size:13px;color:var(--muted);margin-bottom:1rem">你在 ${winners.length} 个团之间等距游走，谁都像你，谁又都不完全是你。</p><div class="multi-cards">${winners.map(w=>`<div class="multi-card"><div class="multi-card-name">${w.name}</div><div class="multi-card-tag">${w.tag}</div><div class="multi-card-verdict">${w.verdict}</div></div>`).join('')}</div>`;
   }
 
-  document.getElementById('dimsCard').innerHTML=DIM_NAMES.map((n,i)=>`
-    <div class="dim-row">
-      <span class="dim-name">${n}</span>
-      <div class="dim-inner">
-        <div class="dim-track"><div class="dim-fill" id="df${i}" style="width:0%"></div></div>
-        <div class="dim-poles"><span>${DIM_LOW[i]}</span><span>${DIM_HIGH[i]}</span></div>
-      </div>
-    </div>`).join('');
+  // 雷达图
+  const radarVals = userLevels.map(lv => (lv - 1) / 4); // 归一化到 0-1
+  document.getElementById('dimsCard').innerHTML = buildRadar(radarVals);
+  // 动画：延迟后替换为实际数据
+  setTimeout(() => {
+    document.getElementById('dimsCard').innerHTML = buildRadar(radarVals, true);
+  }, 80);
 
   const dt={};DESTINY_NAMES.forEach(k=>dt[k]=0);
   winners.forEach(w=>DESTINY_NAMES.forEach(k=>dt[k]+=(w.destiny[k]||0)));
@@ -461,11 +456,6 @@ function showResult(winners,userLevels){
   }
 
   showScreen('result');
-  setTimeout(()=>{
-    userLevels.forEach((lv,i)=>{
-      setTimeout(()=>{const el=document.getElementById('df'+i);if(el)el.style.width=((lv-1)/4*100)+'%';},i*150);
-    });
-  },50);
 
   document.getElementById('shareBtn').onclick=function(){
     const names=winners.map(w=>w.name).join(' × ');
@@ -480,6 +470,99 @@ function toggleDestiny(){
   destinyOpen=!destinyOpen;
   document.getElementById('destinyDetail').classList.toggle('open',destinyOpen);
   document.getElementById('destinyToggle').textContent=destinyOpen?'收起 ▴':'点击查看详情 ▾';
+}
+
+function buildRadar(vals, animate) {
+  const CX = 160, CY = 160, R = 100;
+  const n = 4;
+  // 4轴角度：上/右下/左下/左上，顺时针从顶部开始
+  const angles = [
+    -Math.PI / 2,           // 顶 (撕逼体制)
+    -Math.PI / 2 + Math.PI * 2 / 4,  // 右 (大众)
+    -Math.PI / 2 + Math.PI * 4 / 4,  // 底 (单核拖飞机)
+    -Math.PI / 2 + Math.PI * 6 / 4,  // 左 (靠硬实力)
+  ];
+
+  // 标签位置（稍微往外推）
+  const labelR = R + 34;
+  const labelPos = angles.map(a => ({
+    x: CX + labelR * Math.cos(a),
+    y: CY + labelR * Math.sin(a),
+  }));
+
+  // 标签文字（两行：中文 + 英文）
+  const labels = [
+    {zh:'撕逼体制', en:'Social Field'},
+    {zh:'大众', en:'Aesthetics'},
+    {zh:'单核托飞机', en:'Team Mode'},
+    {zh:'靠硬实力', en:'Core Strength'},
+  ];
+
+  // 网格多边形（20% 40% 60% 80% 100%）
+  function gridPoly(ratio) {
+    return angles.map(a =>
+      `${CX + R * ratio * Math.cos(a)},${CY + R * ratio * Math.sin(a)}`
+    ).join(' ');
+  }
+
+  // 用户数据多边形
+  const userPts = angles.map((a, i) => {
+    const r = Math.max(0.05, vals[i]) * R;
+    return `${CX + r * Math.cos(a)},${CY + r * Math.sin(a)}`;
+  }).join(' ');
+
+  // 轴线（从中心到顶点）
+  const axes = angles.map(a =>
+    `<line x1="${CX}" y1="${CY}" x2="${CX + R * Math.cos(a)}" y2="${CY + R * Math.sin(a)}"
+      stroke="rgba(255,255,255,0.1)" stroke-width="1"/>`
+  ).join('');
+
+  // 网格
+  const grids = [0.2, 0.4, 0.6, 0.8, 1].map(r =>
+    `<polygon points="${gridPoly(r)}" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>`
+  ).join('');
+
+  // 顶点圆点
+  const dots = angles.map((a, i) => {
+    const r = Math.max(0.05, vals[i]) * R;
+    return `<circle cx="${CX + r * Math.cos(a)}" cy="${CY + r * Math.sin(a)}"
+      r="4" fill="#e8c97a" opacity="0.9"/>`;
+  }).join('');
+
+  // 标签SVG文字
+  const labelsSVG = labelPos.map((pos, i) => {
+    const l = labels[i];
+    // 文字对齐：左/右/居中
+    const anchor = pos.x < CX - 10 ? 'end' : pos.x > CX + 10 ? 'start' : 'middle';
+    const yOffset = pos.y < CY ? -8 : 8;
+    return `
+      <text x="${pos.x}" y="${pos.y + yOffset - 7}" text-anchor="${anchor}"
+        font-family="Noto Sans SC,sans-serif" font-size="11" fill="rgba(240,236,228,0.7)"
+        font-weight="500">${l.zh}</text>
+      <text x="${pos.x}" y="${pos.y + yOffset + 6}" text-anchor="${anchor}"
+        font-family="Noto Sans SC,sans-serif" font-size="9" fill="rgba(136,136,136,0.6)">${l.en}</text>`;
+  }).join('');
+
+  // CSS动画
+  const animStyle = animate ? '' : `
+    <style>
+      #radarUser { opacity: 0; animation: radarIn 0.6s ease forwards; }
+      #radarDots { opacity: 0; animation: radarIn 0.6s ease 0.3s forwards; }
+      @keyframes radarIn { to { opacity: 1; } }
+    </style>`;
+
+  return `<div class="radar-wrap">
+    <svg viewBox="0 0 320 320" xmlns="http://www.w3.org/2000/svg">
+      ${animStyle}
+      ${grids}
+      ${axes}
+      <polygon id="radarUser" points="${userPts}"
+        fill="rgba(232,201,122,0.15)" stroke="#e8c97a" stroke-width="1.5"
+        stroke-linejoin="round"/>
+      <g id="radarDots">${dots}</g>
+      ${labelsSVG}
+    </svg>
+  </div>`;
 }
 
 function resetQuiz(){startQuiz();}
