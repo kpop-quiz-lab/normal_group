@@ -347,6 +347,17 @@ function getFinalLevel(sum){
   return 5;
 }
 
+function getPreciseLevel(sum){
+  const scoreMap={
+    0:0.6, 2:0.8, 4:1.0, 5:1.2, 6:1.4,
+    7:1.8, 9:2.2,
+    10:2.6, 11:2.8, 12:3.2, 13:3.4,
+    14:3.6, 15:4.0, 16:4.4,
+    18:4.6, 19:4.8, 20:5.0, 23:5.2, 27:5.4
+  };
+  return scoreMap[sum]??3.0;
+}
+
 function calcDist(u,m){return u.reduce((s,v,i)=>s+(v-m[i])**2,0);}
 
 let cur=0, ans=new Array(12).fill(null), dimRaws=[0,0,0,0];
@@ -389,12 +400,34 @@ function calcResult(){
   showScreen('loading');
   dimRaws=[0,0,0,0];
   ans.forEach((a,qi)=>{const q=QUESTIONS[qi];dimRaws[q.dim]+=q.options[a].score;});
+  // 第一步：粗粒度层级（1-5整数），用于主匹配
   const userLevels=dimRaws.map(r=>getFinalLevel(r));
+  // 第二步：精确小数层级，用于平局时二次区分
+  const userPrecise=dimRaws.map(r=>getPreciseLevel(r));
   setTimeout(()=>{
+    // 粗匹配：找最小整数距离
     let minDist=Infinity;
     GROUPS_RAW.forEach(g=>{const d=calcDist(userLevels,g.levels);if(d<minDist)minDist=d;});
-    const winners=GROUPS_RAW.filter(g=>calcDist(userLevels,g.levels)===minDist);
-    showResult(winners,userLevels);
+    let candidates=GROUPS_RAW.filter(g=>calcDist(userLevels,g.levels)===minDist);
+    // 精匹配：候选团超过1个时，用精确坐标再算一次距离
+    if(candidates.length>1){
+      let minDist2=Infinity;
+      candidates.forEach(g=>{
+        const precLevels=g.levels.map(lv=>{
+          // 把团的整数层级映射到该层级的中间精确值
+          const midMap={1:1.0, 2:2.0, 3:3.0, 4:4.0, 5:5.0};
+          return midMap[lv];
+        });
+        const d=calcDist(userPrecise,precLevels);
+        if(d<minDist2)minDist2=d;
+      });
+      const refined=candidates.filter(g=>{
+        const precLevels=g.levels.map(lv=>({1:1.0,2:2.0,3:3.0,4:4.0,5:5.0}[lv]));
+        return Math.abs(calcDist(userPrecise,precLevels)-minDist2)<1e-9;
+      });
+      candidates=refined;
+    }
+    showResult(candidates,userLevels);
   },1800);
 }
 
